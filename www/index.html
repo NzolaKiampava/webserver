@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<title>Webserv - Servidor HTTP em C++</title>
+	<style>
+		* {
+			margin: 0;
+			padding: 0;
+			box-sizing: border-box;
+		}
+		
+		body {
+			font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+			background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+			min-height: 100vh;
+			display: flex;
+			justify-content: center;
+			align-items: center;
+			padding: 20px;
+		}
+		
+		.container {
+			background: white;
+			border-radius: 10px;
+			box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+			max-width: 800px;
+			padding: 50px;
+			text-align: center;
+		}
+		
+		h1 {
+			color: #333;
+			margin-bottom: 10px;
+			font-size: 2.5em;
+		}
+		
+		.subtitle {
+			color: #666;
+			margin-bottom: 30px;
+			font-size: 1.1em;
+		}
+		
+		.status {
+			display: inline-block;
+			background: #4CAF50;
+			color: white;
+			padding: 10px 20px;
+			border-radius: 5px;
+			margin-bottom: 30px;
+			font-weight: bold;
+		}
+		
+		p {
+			color: #555;
+			line-height: 1.6;
+			margin-bottom: 20px;
+		}
+		
+		.features {
+			text-align: left;
+			background: #f5f5f5;
+			padding: 20px;
+			border-radius: 5px;
+			margin: 30px 0;
+		}
+		
+		.features h2 {
+			color: #333;
+			margin-bottom: 15px;
+			font-size: 1.3em;
+		}
+		
+		.features ul {
+			list-style: none;
+			padding-left: 0;
+		}
+		
+		.features li {
+			padding: 8px 0;
+			color: #666;
+			border-bottom: 1px solid #ddd;
+		}
+		
+		.features li:before {
+			content: "✓ ";
+			color: #4CAF50;
+			font-weight: bold;
+			margin-right: 10px;
+		}
+		
+		.features li:last-child {
+			border-bottom: none;
+		}
+		
+		.info {
+			background: #e3f2fd;
+			border-left: 4px solid #2196F3;
+			padding: 15px;
+			margin: 20px 0;
+			border-radius: 3px;
+			color: #1976D2;
+		}
+	</style>
+</head>
+<body>
+	<div class="container">
+		<h1>🚀 Webserv</h1>
+		<p class="subtitle">Servidor HTTP implementado em C++ 98</p>
+		
+		<div class="status">✓ Servidor Online</div>
+		
+		<p>Bem-vindo ao Webserv! Este é um servidor web funcional desenvolvido do zero em C++ 98 para o projeto 42.</p>
+		
+		<div class="features">
+			<h2>Principais Características</h2>
+			<ul>
+				<li>Recebe requisições HTTP de navegadores reais</li>
+				<li>Processamento e resposta adequada a requisições</li>
+				<li>Serviço de websites estáticos completos</li>
+				<li>Execução de scripts CGI (PHP, Python, etc.)</li>
+				<li>Gerenciamento de múltiplas conexões simultaneamente</li>
+				<li>Sem bloqueio de I/O (Non-blocking)</li>
+			</ul>
+		</div>
+		
+		<div class="info">
+			<strong>ℹ️ Informação:</strong> Este servidor está funcionando perfeitamente. Você pode começar a fazer requisições!
+		</div>
+		
+		<p style="margin-top: 30px; font-size: 0.9em; color: #999;">
+			© 2025 Webserv Project | Made with ❤️ for 42 School
+		</p>
+	</div>
+</body>
+</html>
