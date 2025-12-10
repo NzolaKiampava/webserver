@@ -2,66 +2,66 @@
 #include <fstream>
 #include <sstream>
 
+// Construtor padrão: Inicializa com valores padrão
 Config::Config() : _port(8080), _host("localhost"), _autoindex(false)
 {
+	// TODO: Valores padrão inicializados
 }
 
+// Construtor com arquivo de configuração
 Config::Config(const std::string& configFile) : _port(8080), _host("localhost"), _autoindex(false)
 {
-	parse_config(configFile);
+	// TODO: Chamar parse_config
 }
 
+// Destrutor
 Config::~Config()
 {
+	// TODO: Liberar recursos se necessário
 }
 
+// Parse do arquivo de configuração
+// - Abre e lê arquivo .conf
+// - Identifica diretivas (listen, server_name, root, etc.)
+// - Popula as variáveis membro
+// - Trata erros de parsing
 void Config::parse_config(const std::string& configFile)
 {
-	std::ifstream file(configFile);
-	if (!file.is_open())
-	{
-		std::cerr << "Error: Could not open config file: " << configFile << std::endl;
-		return;
-	}
-	
-	std::string line;
-	while (std::getline(file, line))
-	{
-		// TODO: Parse configuration file
-	}
-	
-	file.close();
+	// TODO: Implementar parser de configuração (estilo nginx)
 }
 
+// Getter: Retorna a porta
 int Config::get_port() const
 {
-	return _port;
+	// TODO: Retornar porta
 }
 
+// Getter: Retorna o hostname/IP
 std::string Config::get_host() const
 {
-	return _host;
+	// TODO: Retornar host
 }
 
+// Getter: Retorna o diretório raiz (document root)
 std::string Config::get_root() const
 {
-	return _root;
+	// TODO: Retornar raiz do servidor
 }
 
+// Getter: Retorna lista de arquivos índice (ex: index.html, index.php)
 std::vector<std::string> Config::get_index_files() const
 {
-	return _index_files;
+	// TODO: Retornar arquivos de índice padrão
 }
 
+// Getter: Retorna caminho de página de erro para um código HTTP específico
 std::string Config::get_error_page(int code) const
 {
-	auto it = _error_pages.find(code);
-	if (it != _error_pages.end())
-		return it->second;
-	return "";
+	// TODO: Retornar página de erro para o código
 }
 
+// Getter: Retorna se autoindex está habilitado
 bool Config::is_autoindex_enabled() const
 {
-	return _autoindex;
+	// TODO: Retornar se autoindex está ativo
 }

@@ -2,59 +2,68 @@
 #include <unistd.h>
 #include <cstring>
 
+// Construtor: Inicializa cliente com socket e IP
 Client::Client(int socket, const std::string& ip) : _socket(socket), _ip_address(ip)
 {
+	// TODO: Inicializar cliente
 }
 
+// Destrutor: Fecha o socket do cliente
 Client::~Client()
 {
-	if (_socket != -1)
-		close(_socket);
+	// TODO: Fechar socket e limpar recursos
 }
 
+// Recebe dados do cliente
+// - Usa recv() em non-blocking mode
+// - Adiciona dados ao buffer
+// - Se buffer contém requisição completa, faz parse
 void Client::receive_data()
 {
-	char buffer[4096];
-	ssize_t bytes = recv(_socket, buffer, sizeof(buffer), 0);
-	
-	if (bytes > 0)
-		_buffer.append(buffer, bytes);
-	
-	// TODO: Parse request from buffer
+	// TODO: Receber dados do cliente com recv()
 }
 
+// Envia resposta ao cliente
+// - Usa send() para enviar resposta HTTP
+// - Trata possíveis erros de envio
+// - Pode enviar em múltiplos chunks se resposta for grande
 void Client::send_response()
 {
-	std::string response = _response.get_response();
-	send(_socket, response.c_str(), response.size(), 0);
+	// TODO: Enviar resposta ao cliente
 }
 
+// Getter: Retorna descritor de socket
 int Client::get_socket() const
 {
-	return _socket;
+	// TODO: Retornar socket
 }
 
+// Getter: Retorna endereço IP do cliente
 std::string Client::get_ip() const
 {
-	return _ip_address;
+	// TODO: Retornar IP
 }
 
+// Getter: Retorna referência para objeto Request
 Request& Client::get_request()
 {
-	return _request;
+	// TODO: Retornar request
 }
 
+// Getter: Retorna referência para objeto Response
 Response& Client::get_response()
 {
-	return _response;
+	// TODO: Retornar response
 }
 
+// Getter: Retorna referência para buffer de dados recebido
 std::string& Client::get_buffer()
 {
-	return _buffer;
+	// TODO: Retornar buffer
 }
 
+// Verifica se a requisição do cliente está completa
 bool Client::is_request_complete() const
 {
-	return _request.is_complete();
+	// TODO: Verificar se request está completa
 }
