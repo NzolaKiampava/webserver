@@ -21,6 +21,8 @@ class Server
 		std::string _host;
 		std::vector<Client> _clients;
 		Config _config;
+		
+		void _setup_socket();
 
 	public:
 		Server(const std::string& configFile);
