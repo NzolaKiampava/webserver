@@ -6,7 +6,7 @@
 /*   By: nkiampav <nkiampav@student.42.fr>          +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2026/01/08 19:54:53 by nkiampav          #+#    #+#             */
-/*   Updated: 2026/01/08 19:54:53 by nkiampav         ###   ########.fr       */
+/*   Updated: 2026/01/24 11:35:19 by nkiampav         ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
@@ -33,16 +33,29 @@ class Server
 		std::string _host;
 		std::vector<Client> _clients;
 		Config _config;
+		bool _running;
 		
 		void _setup_socket();
+		void _set_nonblocking(int socket);
+
+
+		void accept_connection();
+
+		void handle_client_read(Client& client, size_t client_index);
+		void handle_client_write(Client& client, size_t client_index);
+
+		void _remove_client(size_t index);
+		void _check_client_timeouts();
+
+		// Deve ser implementado
+		//Server(const Server& other);
+		//Server& operator=(const Server& other);
 
 	public:
 		Server(const std::string& configFile);
 		~Server();
 		
 		void run();
-		void accept_connection();
-		void handle_client(Client& client);
 		void close_server();
 		
 		int get_socket() const;
