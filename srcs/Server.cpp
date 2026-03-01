@@ -6,7 +6,7 @@
 /*   By: nkiampav <nkiampav@student.42.fr>          +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2026/01/08 19:54:24 by nkiampav          #+#    #+#             */
-/*   Updated: 2026/02/14 15:32:42 by nkiampav         ###   ########.fr       */
+/*   Updated: 2026/03/01 23:02:44 by nkiampav         ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
@@ -227,16 +227,6 @@ void Server::run()
                 // Índice do cliente é (i - 1) porque pollfd[0] é o servidor
                 size_t client_index = i - 1;
                 
-                std::cout << "[DEBUG] Client " << _clients[client_index].get_ip() 
-                          << " socket=" << _clients[client_index].get_socket()
-                          << " revents=" << poll_fds[i].revents 
-                          << " (POLLIN=" << (poll_fds[i].revents & POLLIN ? 1 : 0)
-                          << " POLLOUT=" << (poll_fds[i].revents & POLLOUT ? 1 : 0)
-                          << " POLLHUP=" << (poll_fds[i].revents & POLLHUP ? 1 : 0)
-                          << " POLLERR=" << (poll_fds[i].revents & POLLERR ? 1 : 0)
-                          << " POLLNVAL=" << (poll_fds[i].revents & POLLNVAL ? 1 : 0)
-                          << ")" << std::endl;
-                
                 // POLLNVAL significa socket inválido - remover imediatamente
                 if (poll_fds[i].revents & POLLNVAL)
                 {
@@ -249,7 +239,6 @@ void Server::run()
                 // Mesmo que POLLHUP esteja setado, pode haver dados no buffer
                 if (poll_fds[i].revents & POLLIN)
                 {
-                    std::cout << "[DEBUG] POLLIN detected, reading data..." << std::endl;
                     handle_client_read(_clients[client_index], client_index);
                     // Não fazer continue - pode ter sido removido em handle_client_read
                 }
@@ -257,14 +246,12 @@ void Server::run()
                 // Se socket está pronto para escrita (POLLOUT) e há dados para enviar
                 else if ((poll_fds[i].revents & POLLOUT) && client_index < _clients.size())
                 {
-                    std::cout << "[DEBUG] POLLOUT detected, writing data..." << std::endl;
                     handle_client_write(_clients[client_index], client_index);
                 }
                 
                 // Verificar erro/desconexão se não processou dados e cliente ainda existe
                 else if ((poll_fds[i].revents & (POLLERR | POLLHUP)) && client_index < _clients.size())
                 {
-                    std::cout << "[DEBUG] Error/Hangup without data, removing client" << std::endl;
                     _remove_client(client_index);
                 }
             }
@@ -294,9 +281,9 @@ void Server::accept_connection()
 	
 	if (client_socket < 0)
 	{
-		// Em non-blockinG, EAGAIN/EWOULDBLOCK significa sem conexoes pendentes
-		if (errno != EAGAIN && errno != EWOULDBLOCK)
-			std::cerr << "Error: Could not accept connection" << std::endl;
+		// Em non-blocking, se poll() indicou POLLIN mas accept() falhou,
+		// pode ser porque a conexão foi fechada antes de accept() ser chamado
+		// Simplesmente retornamos sem erro
 		return;
 	}
 
@@ -345,6 +332,9 @@ void Server::handle_client_read(Client& client, size_t client_index)
 			Request request;
 			request.parse(client.get_buffer());
 			
+			// Armazenar request no cliente para poder verificar headers depois
+			client.get_request() = request;
+			
 			std::cout << "Request: " << request.get_method() << " " 
 			          << request.get_uri() << " " << request.get_version() << std::endl;
 			
@@ -364,11 +354,21 @@ void Server::handle_client_read(Client& client, size_t client_index)
 			// Tentar enviar a resposta imediatamente
 			client.send_response();
 			
-			// Se resposta foi completamente enviada, remover cliente
+			// Se resposta foi completamente enviada, verificar keep-alive
 			if (client.response_sent())
 			{
 				std::cout << "Response fully sent to " << client.get_ip() << std::endl;
-				_remove_client(client_index);
+				
+				// Verificar se o cliente quer manter a conexão aberta
+				std::string conn_header = client.get_request().get_header("Connection");
+				
+				if (conn_header == "keep-alive") {
+					std::cout << "Keeping connection alive for " << client.get_ip() << std::endl;
+					client.reset_for_next_request();
+				} else {
+					std::cout << "Closing connection (Connection: close) for " << client.get_ip() << std::endl;
+					_remove_client(client_index);
+				}
 			}
 		}
 	}

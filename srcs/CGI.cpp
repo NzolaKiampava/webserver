@@ -189,22 +189,15 @@ std::string CGI::_read_from_fd(int fd, int timeout) const
 			// EOF
 			break;
 		}
-		else
+		else  // bytes_read == -1
 		{
-			if (errno == EAGAIN || errno == EWOULDBLOCK)
-			{
-				// Não há dados disponíveis agora
-				if (time(NULL) - start_time > timeout)
-					break;  // Timeout
-				
-				usleep(10000);  // 10ms
-				continue;
-			}
-			else
-			{
-				// Erro real
-				break;
-			}
+			// Em non-blocking, -1 pode significar sem dados disponíveis
+			// Aguardar um pouco e verificar timeout
+			if (time(NULL) - start_time > timeout)
+				break;  // Timeout
+			
+			usleep(10000);  // 10ms
+			continue;
 		}
 	}
 	

@@ -26,17 +26,15 @@ Client::Client(int socket, const std::string& ip)
 // Destrutor: Fecha o socket do cliente
 Client::~Client()
 {
-    // Remova o close(_socket) daqui.
     // O socket deve ser fechado apenas quando o servidor decidir 
     // remover o cliente da lista ativa.
-    std::cout << "Client object destroyed for IP: " << _ip_address << std::endl;
 }
 
 // Recebe dados do cliente
 // - Usa recv() para ler dados dados do socket
 // - Adiciona dados ao buffer interno
-// - Detecta quando cliente desconecta (recv retirna 0)
-// - Trata erros (EAGAIN/EWOULDBLOCK sao normais em non-blocking)
+// - Detecta quando cliente desconecta (recv retorna 0)
+// - Trata erros (qualquer erro remove o cliente)
 void Client::receive_data()
 {
     char buffer[BUFFER_SIZE];
@@ -44,10 +42,8 @@ void Client::receive_data()
     // recv() em non-blocking retorna imediatamente
     // - Retorna > 0: número de bytes recebidos
     // - Retorna 0: cliente fechou conexão
-    // - Retorna -1: erro (verificar errno)
+    // - Retorna -1: erro
     ssize_t bytes_received = recv(_socket, buffer, BUFFER_SIZE - 1, 0);
-    
-    std::cout << "[DEBUG] recv() returned: " << bytes_received << " (errno=" << errno << ")" << std::endl;
     
     if (bytes_received > 0)
     {
@@ -56,7 +52,6 @@ void Client::receive_data()
         _buffer.append(buffer, bytes_received);  // Adicionar ao buffer interno
         
         std::cout << "Received " << bytes_received << " bytes from " << _ip_address << std::endl;
-        std::cout << "[DEBUG] Request buffer: " << _buffer << std::endl;
         
         // Verificar se temos uma requisição HTTP completa
         _check_request_complete();
@@ -69,20 +64,10 @@ void Client::receive_data()
     }
     else
     {
-        // Erro no recv()
-        if (errno == EAGAIN || errno == EWOULDBLOCK)
-        {
-            // Não há dados disponíveis agora (normal em non-blocking)
-            std::cout << "[DEBUG] EAGAIN/EWOULDBLOCK - no data available" << std::endl;
-            return;
-        }
-        else
-        {
-            // Erro real
-            std::cerr << "Error receiving data from " << _ip_address 
-                      << ": " << strerror(errno) << std::endl;
-            throw std::runtime_error("recv() error");
-        }
+        // Erro no recv() - qualquer erro deve remover o cliente
+        // Em non-blocking com poll(), se há POLLIN, recv() não deve falhar
+        std::cerr << "Error receiving data from " << _ip_address << std::endl;
+        throw std::runtime_error("recv() error");
     }
 }
 
@@ -90,7 +75,7 @@ void Client::receive_data()
 // - Usa send() para enviar dados do buffer de resposta
 // - Pode enviar em múltiplos chunks se resposta for grande
 // - Mantém controle de quantos bytes já foram enviados
-// - Trata erros (EAGAIN/EWOULDBLOCK são normais em non-blocking)
+// - Trata erros (qualquer erro remove o cliente)
 void Client::send_response()
 {
     // Se não há resposta pronta, não fazer nada
@@ -109,7 +94,7 @@ void Client::send_response()
     
     // send() em non-blocking pode enviar menos bytes que o solicitado
     // - Retorna > 0: número de bytes enviados
-    // - Retorna -1: erro (verificar errno)
+    // - Retorna -1: erro
     ssize_t bytes_sent = send(_socket, 
                                _response_buffer.c_str() + _bytes_sent, 
                                remaining, 
@@ -126,24 +111,14 @@ void Client::send_response()
         if (_bytes_sent >= _response_buffer.size())
         {
             _response_sent = true;
-            std::cout << "Response fully sent to " << _ip_address << std::endl;
         }
     }
     else if (bytes_sent == -1)
     {
-        if (errno == EAGAIN || errno == EWOULDBLOCK)
-        {
-            // Socket não está pronto para escrita agora (normal em non-blocking)
-            // Vamos tentar novamente na próxima iteração do poll()
-            return;
-        }
-        else
-        {
-            // Erro real
-            std::cerr << "Error sending data to " << _ip_address 
-                      << ": " << strerror(errno) << std::endl;
-            throw std::runtime_error("send() error");
-        }
+        // Erro no send() - qualquer erro deve remover o cliente
+        // Em non-blocking com poll(), se há POLLOUT, send() não deve falhar
+        std::cerr << "Error sending data to " << _ip_address << std::endl;
+        throw std::runtime_error("send() error");
     }
 }
 
@@ -254,7 +229,6 @@ void Client::_check_request_complete()
         if (body_received >= static_cast<size_t>(content_length))
         {
             _request_complete = true;
-            std::cout << "Complete request received (with body) from " << _ip_address << std::endl;
         }
         else
         {
@@ -268,7 +242,6 @@ void Client::_check_request_complete()
         // Sem Content-Length, requisição está completa após headers
         // (para GET, DELETE, etc.)
         _request_complete = true;
-        std::cout << "Complete request received (headers only) from " << _ip_address << std::endl;
     }
 }
 
@@ -297,5 +270,4 @@ void Client::reset_for_next_request() {
     _response = Response();
     
     update_activity();
-    std::cout << "[DEBUG] Client " << _ip_address << " reset for Keep-Alive" << std::endl;
 }

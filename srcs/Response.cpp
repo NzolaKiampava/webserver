@@ -12,7 +12,7 @@ Response::Response() : _status_code(200), _status_message("OK")
 {
 	// Headers padrão
 	_headers["Server"] = "WebServer/1.0";
-	_headers["Connection"] = "close";
+	// Connection será definido no generate() baseado no request
 }
 
 // Destrutor
@@ -63,6 +63,14 @@ void Response::generate(const Request& request, const std::string& root)
 	std::ostringstream length_stream;
 	length_stream << _body.length();
 	set_header("Content-Length", length_stream.str());
+	
+	// Definir Connection header baseado no que o cliente pediu
+	std::string client_connection = request.get_header("Connection");
+	if (client_connection == "keep-alive") {
+		set_header("Connection", "keep-alive");
+	} else {
+		set_header("Connection", "close");
+	}
 }
 
 // Handler para requisições GET
@@ -602,7 +610,6 @@ bool Response::_process_multipart_upload(const std::string& body, const std::str
 			{
 				file << file_content;
 				file.close();
-				std::cout << "[DEBUG] Ficheiro guardado em: " << filepath << std::endl;
 			}
 			else
 				return false;

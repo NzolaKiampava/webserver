@@ -1,692 +1,370 @@
-# WebServer - Documentação Técnica
+# Webserv
 
-Um servidor web HTTP de alta performance implementado em C++98, com suporte a múltiplas conexões simultâneas usando multiplexação de I/O com `select()`.
+*This project has been created as part of the 42 curriculum by [nkiampav](https://github.com/nkiampav), [maalmeid](https://github.com/maalmeid), and [jpanzo](https://github.com/jpanzo).*
 
-## 📋 Índice
+## Table of Contents
 
-1. [Visão Geral](#visão-geral)
-2. [Arquitetura](#arquitetura)
-3. [Componentes Principais](#componentes-principais)
-4. [Conceitos Técnicos](#conceitos-técnicos)
-5. [Fluxo de Execução](#fluxo-de-execução)
-6. [Estrutura do Projeto](#estrutura-do-projeto)
-7. [Como Compilar e Executar](#como-compilar-e-executar)
-8. [Configuração](#configuração)
-
----
-
-## 🎯 Visão Geral
-
-O WebServer é um servidor HTTP não-bloqueante que utiliza:
-
-- **Sockets Unix** para comunicação de rede
-- **Multiplexação de I/O** com `select()` para gerenciar múltiplas conexões
-- **Arquitetura orientada a objetos** em C++
-- **Protocolo HTTP/1.1** para comunicação com clientes
-- **Suporte a CGI** para execução de scripts dinâmicos
-
-**Principais características:**
-
-- ✅ Aceita múltiplas conexões simultâneas
-- ✅ Configurável via arquivo de configuração
-- ✅ Suporte a rotas e páginas de erro
-- ✅ Processamento de requisições HTTP
-- ✅ Gerenciamento automático de recursos
+- [Description](#description)
+- [Features](#features)
+- [Project Structure](#project-structure)
+- [Instructions](#instructions)
+  - [Requirements](#requirements)
+  - [Compilation](#compilation)
+  - [Execution](#execution)
+  - [Testing](#testing)
+  - [Configuration File Format](#configuration-file-format)
+  - [Graceful Shutdown](#graceful-shutdown)
+- [Technical Choices](#technical-choices)
+- [Team Contributions](#team-contributions)
+- [Resources](#resources)
+  - [Documentation & Standards](#documentation--standards)
+  - [Medium Articles](#medium-articles)
+  - [Testing Tools](#testing-tools)
+  - [AI Usage](#ai-usage)
+- [Acknowledgments](#acknowledgments)
+- [License](#license)
 
 ---
 
-## 🏗️ Arquitetura
+## Description
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│                          main()                              │
-│              Inicializa o servidor e loop                   │
-└──────────────────┬──────────────────────────────────────────┘
-                   │
-                   ▼
-        ┌──────────────────────┐
-        │   Server (run())     │
-        │  Loop Principal      │
-        │  select() Multiplex  │
-        └────┬──────────────┬──┘
-             │              │
-      ┌──────▼──────┐  ┌────▼──────────┐
-      │ accept()    │  │ handle_client()│
-      │ Nova conex. │  │ Processa req.  │
-      └─────────────┘  └────┬───────────┘
-                             │
-                    ┌────────┴────────┐
-                    │                 │
-              ┌─────▼─────┐    ┌──────▼──────┐
-              │ Request   │    │  Response   │
-              │ Parse HTTP│    │ Gera resposta│
-              └───────────┘    └─────────────┘
-```
+**Webserv** is a custom HTTP/1.1 web server implementation written in C++98. This project provides a deep dive into the fundamentals of web server architecture, network programming, and the HTTP protocol. The server is capable of serving static websites, handling file uploads, executing CGI scripts, and managing multiple simultaneous client connections through non-blocking I/O multiplexing.
+
+### Goal
+
+The primary goal of this project is to understand how HTTP servers work at a fundamental level by building one from scratch. By the end of this project, we gain practical experience with:
+- Socket programming and TCP/IP communication
+- HTTP/1.1 protocol implementation (request parsing, response generation)
+- I/O multiplexing using `poll()` for handling concurrent connections
+- Non-blocking I/O operations
+- CGI (Common Gateway Interface) execution
+- Configuration file parsing
+- Robust error handling and server resilience
+
+This project demonstrates that URLs starting with "HTTP" represent a complex but fascinating protocol that powers the modern web.
 
 ---
 
-## 🔧 Componentes Principais
+## Features
 
-### 1. **Server (Server.hpp / Server.cpp)**
-
-Classe responsável pelo gerenciamento do servidor, sockets e loop principal.
-
-**Atributos principais:**
-```cpp
-class Server {
-    int _socket;                    // File descriptor do socket principal
-    int _port;                      // Porta de escuta (ex: 8080)
-    std::string _host;              // Endereço IP de escuta (ex: 127.0.0.1)
-    std::vector<Client> _clients;   // Vetor de clientes conectados
-    Config _config;                 // Configurações do servidor
-};
-```
-
-**Métodos principais:**
-
-| Método | Descrição |
-|--------|-----------|
-| `Server(configFile)` | Construtor - inicializa com arquivo de config |
-| `run()` | Loop principal com select() |
-| `_setup_socket()` | Cria socket, bind e listen |
-| `accept_connection()` | Aceita nova conexão de cliente |
-| `handle_client()` | Processa requisição do cliente |
-| `close_server()` | Encerra servidor e libera recursos |
-
-### 2. **Client (Client.hpp / Client.cpp)**
-
-Representa uma conexão de cliente.
-
-**Atributos:**
-```cpp
-class Client {
-    int _socket;              // File descriptor da conexão
-    std::string _ip_address;  // IP do cliente
-    Request _request;         // Objeto de requisição HTTP
-    Response _response;       // Objeto de resposta HTTP
-    std::string _buffer;      // Buffer de dados recebidos
-};
-```
-
-### 3. **Config (Config.hpp / Config.cpp)**
-
-Gerencia configurações do servidor lidas de arquivo.
-
-**Funcionalidades:**
-- Parse de arquivo de configuração
-- Definição de porta, host, diretório raiz
-- Configuração de páginas de erro
-- Suporte a índices padrão
-
-### 4. **Request (Request.hpp / Request.cpp)**
-
-Parse e análise de requisições HTTP.
-
-**Processa:**
-- Método HTTP (GET, POST, PUT, DELETE, etc)
-- URI e parâmetros
-- Headers HTTP
-- Body da requisição
-
-### 5. **Response (Response.hpp / Response.cpp)**
-
-Geração de respostas HTTP.
-
-**Implementa:**
-- Status codes (200, 404, 500, etc)
-- Headers de resposta
-- Body (conteúdo do arquivo)
-- Compressão opcional
-
-### 6. **CGI (CGI.hpp / CGI.cpp)**
-
-Execução de scripts CGI.
+- ✅ **HTTP/1.1 Protocol Support**: Implements GET, POST, and DELETE methods
+- ✅ **Non-blocking I/O**: Uses `poll()` for efficient multiplexing of multiple client connections
+- ✅ **Static File Serving**: Serves HTML, CSS, JavaScript, images, and other static content
+- ✅ **File Upload**: Supports uploading files via POST requests
+- ✅ **CGI Execution**: Runs CGI scripts (PHP, Python, etc.) and returns dynamic content
+- ✅ **Configuration File**: NGINX-inspired configuration system for flexible server setup
+- ✅ **Multiple Ports**: Can listen on multiple ports simultaneously
+- ✅ **Custom Error Pages**: Configurable error pages (404, 403, 500, etc.)
+- ✅ **Directory Listing**: Optional directory browsing when no index file exists
+- ✅ **HTTP Redirections**: Supports 301/302 redirects
+- ✅ **Graceful Shutdown**: Handles SIGINT and SIGTERM signals cleanly
+- ✅ **Browser Compatible**: Works with modern web browsers (Chrome, Firefox, Safari)
 
 ---
 
-## 🔌 Conceitos Técnicos
+## Project Structure
 
-### Socket e Binding
-
-#### O que é um Socket?
-
-Um **socket** é um endpoint de comunicação de rede. Pense nele como um "plugue" que permite que dois processos se comuniquem pela rede.
-
-**Tipos de socket:**
-```cpp
-socket(AF_INET,      // Família: IPv4
-       SOCK_STREAM,  // Tipo: TCP (stream orientado a conexão)
-       0)            // Protocolo: padrão
 ```
-
-- `AF_INET`: Address Family Internet (IPv4)
-- `SOCK_STREAM`: Transmissão confiável de sequência de bytes (TCP)
-- `SOCK_DGRAM`: Datagramas sem conexão (UDP)
-
-#### Criação do Socket
-
-```cpp
-_socket = socket(AF_INET, SOCK_STREAM, 0);
-if (_socket < 0)
-    throw std::runtime_error("Could not create socket");
-```
-
-Retorna um **file descriptor** (número inteiro ≥ 0) ou -1 em caso de erro.
-
----
-
-### Socket Options (setsockopt)
-
-**SO_REUSEADDR** permite reutilizar a porta imediatamente após encerramento:
-
-```cpp
-int reuse = 1;
-setsockopt(_socket, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(reuse));
-```
-
-Sem isso, a porta permaneceria em estado TIME_WAIT por 30-120 segundos, impedindo reinicialização rápida do servidor.
-
----
-
-### Bind (Ligação ao Endereço)
-
-**Bind** liga o socket a um endereço IP e porta específicos.
-
-#### Estrutura de Endereço (sockaddr_in)
-
-```cpp
-struct sockaddr_in {
-    short sin_family;           // AF_INET para IPv4
-    unsigned short sin_port;    // Porta em network byte order
-    struct in_addr sin_addr;    // Endereço IP
-    char sin_zero[8];           // Preenchimento (não usado)
-};
-```
-
-#### Processo de Bind
-
-```cpp
-struct sockaddr_in server_addr;
-std::memset(&server_addr, 0, sizeof(server_addr));
-
-server_addr.sin_family = AF_INET;
-server_addr.sin_port = htons(8080);  // Host To Network Short (big-endian)
-server_addr.sin_addr.s_addr = htonl(INADDR_ANY);  // Qualquer interface
-
-bind(_socket, (struct sockaddr*)&server_addr, sizeof(server_addr));
-```
-
-**Parâmetros:**
-- `INADDR_ANY` (0.0.0.0): Escuta em todas as interfaces de rede
-- `inet_aton("192.168.1.1", &addr)`: Específico para um IP
-
-**Erros comuns:**
-- `Address already in use`: Porta ocupada ou em TIME_WAIT
-- `Permission denied`: Porta < 1024 requer privilégios root
-
----
-
-### Listen (Colocando em Modo Escuta)
-
-**Listen** coloca o socket em modo passivo, pronto para aceitar conexões.
-
-```cpp
-listen(_socket, SOMAXCONN);
-```
-
-**Parâmetros:**
-- `SOMAXCONN`: Máximo de conexões pendentes na fila (tipicamente 128 ou 1024)
-
-**O que acontece:**
-- Cria uma fila de conexões pendentes
-- Socket fica em estado LISTEN
-- Pronto para `accept()` ser chamado
-
----
-
-### Accept (Aceitando Conexões)
-
-**Accept** remove uma conexão da fila e cria um novo socket para comunicação:
-
-```cpp
-struct sockaddr_in client_addr;
-socklen_t client_addr_len = sizeof(client_addr);
-
-int client_socket = accept(_socket, 
-                          (struct sockaddr*)&client_addr, 
-                          &client_addr_len);
-
-if (client_socket < 0)
-    throw std::runtime_error("Accept failed");
-```
-
-**O que retorna:**
-- Novo **file descriptor** para comunicação com cliente
-- Estrutura `client_addr` preenchida com info do cliente
-- Socket original permanece escutando
-
-**Informações do cliente:**
-```cpp
-std::string client_ip = inet_ntoa(client_addr.sin_addr);
-int client_port = ntohs(client_addr.sin_port);
+webserv/
+├── Makefile                    # Build configuration
+├── README.md                   # This file
+├── config/                     # Configuration files
+│   ├── default.conf            # Default server configuration
+│   └── test.conf               # Test configuration
+├── includes/                   # Header files
+│   ├── Server.hpp              # Main server class
+│   ├── Client.hpp              # Client connection handler
+│   ├── Config.hpp              # Configuration parser
+│   ├── Request.hpp             # HTTP request parser
+│   ├── Response.hpp            # HTTP response generator
+│   ├── CGI.hpp                 # CGI execution handler
+│   └── Utils.hpp               # Utility functions
+├── srcs/                       # Implementation files
+│   ├── main.cpp                # Entry point
+│   ├── Server.cpp              # Server implementation
+│   ├── Client.cpp              # Client implementation
+│   ├── Config.cpp              # Config parser implementation
+│   ├── Request.cpp             # Request parser implementation
+│   ├── Response.cpp            # Response generator implementation
+│   ├── CGI.cpp                 # CGI handler implementation
+│   └── Utils.cpp               # Utilities implementation
+├── www/                        # Web content directory
+│   ├── index.html              # Default homepage
+│   ├── error_pages/            # Custom error pages
+│   │   ├── 404.html
+│   │   ├── 403.html
+│   │   └── 500.html
+│   └── uploads/                # Upload directory
+└── cgi-bin/                    # CGI scripts
+    └── test.py                 # Example Python CGI script
 ```
 
 ---
 
-### Select (Multiplexação de I/O)
+## Instructions
 
-**Select** monitora múltiplos file descriptors, detectando quando há dados disponíveis.
+### Requirements
 
-#### Por que usar select()?
+- **Compiler**: `c++` (with C++98 standard support)
+- **Operating System**: Linux or macOS
+- **Make**: GNU Make or compatible
 
-Sem select(), o servidor teria que:
-- Aceitar apenas um cliente por vez
-- Ficar bloqueado esperando dados
-- Não conseguir servir múltiplos clientes simultaneamente
+### Compilation
 
-**Com select():** Monitora vários sockets e detecta atividade em qualquer um.
-
-#### Implementação
-
-```cpp
-fd_set read_fds;           // Conjunto de file descriptors
-FD_ZERO(&read_fds);        // Limpar o conjunto
-FD_SET(_socket, &read_fds);// Adicionar socket servidor
-
-// Adicionar sockets dos clientes
-for (size_t i = 0; i < _clients.size(); ++i) {
-    FD_SET(_clients[i].get_socket(), &read_fds);
-}
-
-struct timeval timeout;
-timeout.tv_sec = 5;        // Timeout de 5 segundos
-timeout.tv_usec = 0;
-
-// Retorna quando há atividade ou timeout
-int activity = select(max_fd + 1, &read_fds, NULL, NULL, &timeout);
-
-// Verificar qual socket tem dados
-if (FD_ISSET(_socket, &read_fds))
-    accept_connection();    // Nova conexão
-
-for (size_t i = 0; i < _clients.size(); ++i) {
-    if (FD_ISSET(_clients[i].get_socket(), &read_fds))
-        handle_client(_clients[i]);
-}
-```
-
-**Parâmetros de select():**
-```cpp
-int select(int nfds,              // Maior FD + 1
-           fd_set *readfds,       // FDs para leitura
-           fd_set *writefds,      // FDs para escrita (NULL neste caso)
-           fd_set *exceptfds,     // Condições excepcionais (NULL)
-           struct timeval *timeout); // Timeout (NULL = bloqueante)
-```
-
-**Retorna:**
-- Número de file descriptors com atividade
-- 0 se timeout ocorreu
-- -1 se erro
-
-#### Macros para manipular fd_set
-
-```cpp
-FD_ZERO(&set);          // Limpar conjunto
-FD_SET(fd, &set);       // Adicionar fd
-FD_CLR(fd, &set);       // Remover fd
-FD_ISSET(fd, &set);     // Verificar se fd está no conjunto
-```
-
----
-
-### Fluxo de Dados - Envio e Recepção
-
-#### Receber dados de cliente
-
-```cpp
-char buffer[1024];
-ssize_t bytes_read = recv(client_socket, buffer, sizeof(buffer) - 1, 0);
-
-if (bytes_read < 0)
-    throw std::runtime_error("recv() failed");
-
-if (bytes_read == 0)
-    // Cliente fechou conexão
-    close(client_socket);
-
-buffer[bytes_read] = '\0';  // Null-terminate
-```
-
-#### Enviar resposta para cliente
-
-```cpp
-std::string response = "HTTP/1.1 200 OK\r\n"
-                       "Content-Type: text/html\r\n"
-                       "Content-Length: 13\r\n"
-                       "\r\n"
-                       "Hello, World!";
-
-ssize_t bytes_sent = send(client_socket, response.c_str(), response.size(), 0);
-
-if (bytes_sent < 0)
-    throw std::runtime_error("send() failed");
-```
-
----
-
-### Network Byte Order
-
-Computadores podem usar diferentes **endianness** (ordem de bytes):
-
-- **Big-endian**: Byte mais significativo primeiro (padrão de rede)
-- **Little-endian**: Byte menos significativo primeiro (x86/x64)
-
-**Funções de conversão:**
-```cpp
-htons(value);  // Host To Network Short (16-bit)
-htonl(value);  // Host To Network Long (32-bit)
-ntohs(value);  // Network To Host Short
-ntohl(value);  // Network To Host Long
-```
-
-**Exemplo:**
-```cpp
-server_addr.sin_port = htons(8080);  // Converter 8080 para network order
-int port = ntohs(client_addr.sin_port);  // Converter de volta
-```
-
----
-
-## 📊 Fluxo de Execução
-
-### 1. Inicialização
-
-```
-main()
-  │
-  └─> Server(configFile)
-       │
-       └─> Config::parse_config()
-           ├─ Ler arquivo
-           ├─ Extrair porta, host
-           └─ Retornar configuração
-```
-
-### 2. Execução Principal (server.run())
-
-```
-run()
-  │
-  ├─> _setup_socket()
-  │    ├─ socket() - criar socket
-  │    ├─ setsockopt() - opções
-  │    ├─ bind() - ligar a porta
-  │    ├─ listen() - modo escuta
-  │    └─ Pronto!
-  │
-  └─> while (true) - Loop infinito
-       │
-       ├─> select() - Esperar atividade (timeout 5s)
-       │    │
-       │    ├─ Socket servidor tem nova conexão?
-       │    │   └─> accept_connection()
-       │    │
-       │    └─ Clientes têm dados?
-       │        └─> handle_client()
-       │
-       └─ [Continua esperando...]
-```
-
-### 3. Aceitar Conexão
-
-```
-accept_connection()
-  │
-  ├─> accept(_socket, &client_addr, &len)
-  │    └─ Cria novo socket de comunicação
-  │
-  ├─> inet_ntoa(client_addr.sin_addr) - Extrair IP
-  │
-  ├─> Client(client_socket, ip) - Criar cliente
-  │
-  └─> _clients.push_back() - Adicionar à lista
-```
-
-### 4. Processar Cliente
-
-```
-handle_client(client)
-  │
-  ├─> client.receive_data()
-  │    ├─ recv() - Ler dados do socket
-  │    └─ Buffer com HTTP request
-  │
-  ├─ client.is_request_complete() - Requisição completa?
-  │    │
-  │    ├─> Request::parse() - Parser HTTP
-  │    │    ├─ Extrair método (GET, POST, etc)
-  │    │    ├─ Extrair URI
-  │    │    ├─ Extrair headers
-  │    │    └─ Extrair body
-  │    │
-  │    └─> Response::generate() - Gerar resposta
-  │         ├─ Status code (200, 404, etc)
-  │         ├─ Headers
-  │         └─ Body (arquivo ou CGI)
-  │
-  └─> client.send_response()
-       └─ send() - Enviar dados via socket
-```
-
-### 5. Encerramento
-
-```
-Ctrl+C (SIGINT)
-  │
-  └─> close_server()
-       │
-       ├─ Fechar todos os sockets de clientes
-       │
-       ├─ Fechar socket principal
-       │
-       └─ Liberar recursos
-```
-
----
-
-## 📁 Estrutura do Projeto
-
-```
-webserver/
-├── README.md                 # Este arquivo
-├── Makefile                  # Script de compilação
-├── includes/                 # Headers (.hpp)
-│   ├── Server.hpp           # Classe do servidor
-│   ├── Client.hpp           # Classe de cliente
-│   ├── Config.hpp           # Classe de configuração
-│   ├── Request.hpp          # Parser de requisição HTTP
-│   ├── Response.hpp         # Gerador de resposta HTTP
-│   ├── CGI.hpp              # Executor de scripts CGI
-│   └── Utils.hpp            # Utilitários
-├── srcs/                     # Implementações (.cpp)
-│   ├── main.cpp             # Ponto de entrada
-│   ├── Server.cpp           # Implementação Server
-│   ├── Client.cpp           # Implementação Client
-│   ├── Config.cpp           # Implementação Config
-│   ├── Request.cpp          # Implementação Request
-│   ├── Response.cpp         # Implementação Response
-│   ├── CGI.cpp              # Implementação CGI
-│   └── Utils.cpp            # Implementação Utils
-├── config/                   # Arquivos de configuração
-│   ├── default.conf         # Configuração padrão
-│   └── test.conf            # Configuração de teste
-├── cgi-bin/                 # Scripts CGI
-│   └── test.py              # Script Python de teste
-└── www/                      # Diretório raiz (webroot)
-    ├── index.html           # Página inicial
-    ├── error_pages/         # Páginas de erro
-    │   ├── 403.html         # Forbidden
-    │   ├── 404.html         # Not Found
-    │   └── 500.html         # Internal Server Error
-    └── uploads/             # Diretório de uploads
-```
-
----
-
-## 🛠️ Como Compilar e Executar
-
-### Compilação
+To compile the project, run:
 
 ```bash
-# Compilar o projeto
 make
-
-# Limpeza de objetos
-make clean
-
-# Limpeza completa (remover binário)
-make fclean
-
-# Recompilar tudo
-make re
 ```
 
-### Execução
+This will generate the `webserv` executable.
+
+### Available Make Targets
 
 ```bash
-# Executar com configuração padrão
-make run
-
-# Ou diretamente
-./webserv config/default.conf
-
-# Executar com configuração de teste
-make test
-
-# Ou diretamente
-./webserv config/test.conf
+make all      # Compile the project (default)
+make clean    # Remove object files
+make fclean   # Remove object files and executable
+make re       # Recompile from scratch
 ```
 
-### Teste do Servidor
+### Execution
+
+#### Basic Usage
+
+Run the server with the default configuration:
 
 ```bash
-# Terminal 1: Iniciar servidor
-./webserv config/default.conf
+./webserv
+```
 
-# Terminal 2: Fazer requisição
+The server will use `config/default.conf` and typically listen on `http://localhost:8080`.
+
+#### Custom Configuration
+
+Run with a custom configuration file:
+
+```bash
+./webserv path/to/config.conf
+```
+
+#### Help
+
+Display usage information:
+
+```bash
+./webserv --help
+```
+
+### Testing
+
+#### 1. Test with a Web Browser
+
+Open your browser and navigate to:
+```
+http://localhost:8080
+```
+
+#### 2. Test with telnet
+
+```bash
+telnet localhost 8080
+```
+
+Then type:
+```
+GET / HTTP/1.1
+Host: localhost
+
+```
+(Press Enter twice after the Host line)
+
+#### 3. Test with curl
+
+```bash
+# GET request
 curl http://localhost:8080/
-curl http://localhost:8080/index.html
-curl -X POST http://localhost:8080/upload
+
+# POST request with data
+curl -X POST -d "name=test" http://localhost:8080/upload
+
+# Upload a file
+curl -X POST -F "file=@test.txt" http://localhost:8080/upload
 ```
 
----
+### Configuration File Format
 
-## ⚙️ Configuração
-
-### Arquivo de Configuração (config/default.conf)
+The configuration file is inspired by NGINX syntax. Example:
 
 ```nginx
 server {
     listen 8080;
-    host 127.0.0.1;
+    server_name localhost;
     
     root www;
     index index.html;
     
-    autoindex on;
+    client_max_body_size 10M;
     
-    error_page 403 error_pages/403.html;
-    error_page 404 error_pages/404.html;
-    error_page 500 error_pages/500.html;
+    error_page 404 /error_pages/404.html;
+    error_page 500 /error_pages/500.html;
     
-    # Rotas
     location / {
-        methods GET POST DELETE;
+        allow_methods GET POST;
+        autoindex on;
     }
     
-    location /cgi-bin/ {
-        methods GET POST;
-        cgi_path cgi-bin/;
+    location /upload {
+        allow_methods POST DELETE;
+        upload_path www/uploads;
     }
     
-    location /upload/ {
-        methods POST;
-        max_body_size 10M;
-        upload_path uploads/;
+    location /cgi-bin {
+        allow_methods GET POST;
+        cgi_extension .py;
+        cgi_path /usr/bin/python3;
     }
 }
 ```
 
----
+### Graceful Shutdown
 
-## 🐛 Troubleshooting
+To stop the server gracefully:
+- Press `Ctrl+C` in the terminal, or
+- Send SIGTERM: `kill <pid>`
 
-### Erro: "Address already in use"
-
-**Causa:** Socket anterior ainda em TIME_WAIT
-**Solução:** Aguarde 30-120s ou use `SO_REUSEADDR` (já implementado)
-
-### Servidor não recebe conexões
-
-**Verifique:**
-- Porta correta no arquivo de configuração
-- Firewall não está bloqueando
-- IP correto (localhost vs 0.0.0.0)
-
-### Cliente não recebe resposta
-
-**Verifique:**
-- Response headers corretos (Content-Length)
-- Fim de linha correto (\r\n\r\n)
-- Socket não foi fechado prematuramente
-
-### Vazamento de memória
-
-**Use valgrind:**
-```bash
-valgrind --leak-check=full ./webserv config/default.conf
-```
+The server will close all connections and clean up resources before exiting.
 
 ---
 
-## 📚 Recursos e Referências
+## Technical Choices
 
-### Funções Socket (man pages)
+### I/O Multiplexing: poll() vs select()
 
-```bash
-man socket           # Criar socket
-man bind             # Ligar a endereço
-man listen           # Colocar em escuta
-man accept           # Aceitar conexão
-man select           # Multiplexação I/O
-man send             # Enviar dados
-man recv             # Receber dados
-man setsockopt       # Opções de socket
-man inet_aton        # Converter IP string
-```
+We chose `poll()` over `select()` for the following reasons:
+- **No FD limit**: `select()` has a hard limit of 1024 file descriptors (FD_SETSIZE), while `poll()` has no fixed limit
+- **Safer**: `select()` can corrupt the stack if FDs exceed 1024, `poll()` doesn't have this issue
+- **Cleaner API**: `poll()` uses a simple array of `pollfd` structures instead of complex `fd_set` macros
+- **Better portability**: While both are POSIX, `poll()` is more modern and portable
 
-### Protocolos
+Alternative options like `epoll()` (Linux) or `kqueue()` (BSD/macOS) are faster for thousands of connections, but `poll()` provides the best balance of simplicity, portability, and performance for this project.
 
-- **HTTP/1.1**: RFC 7230-7235
-- **TCP**: RFC 793
-- **IPv4**: RFC 791
+### Non-blocking I/O
 
-### C++ References
+All sockets are configured in non-blocking mode using `fcntl()` with the `O_NONBLOCK` flag. This ensures:
+- The server never blocks waiting for I/O operations
+- Multiple clients can be served simultaneously
+- No client can monopolize server resources
+- Better resilience against slowloris-style attacks
 
-- `<sys/socket.h>`: Socket functions
-- `<netinet/in.h>`: IPv4 structures
-- `<arpa/inet.h>`: Network utilities
-- `<sys/select.h>`: Select function
-- `<unistd.h>`: POSIX API (read, write, close)
+### Architecture
+
+The project follows a modular, object-oriented design:
+- **Server**: Manages the main loop, socket creation, and client lifecycle
+- **Client**: Handles individual client connections, buffers, and state
+- **Request**: Parses HTTP requests according to RFC 2616
+- **Response**: Generates HTTP responses with appropriate headers and status codes
+- **Config**: Parses and validates configuration files
+- **CGI**: Executes external scripts and captures their output
+
+### Memory Management
+
+We avoid dynamic allocation where possible, relying on:
+- Stack-allocated buffers for I/O operations
+- STL containers (vectors, strings) for dynamic data
+- RAII (Resource Acquisition Is Initialization) for automatic cleanup
+- No raw `new`/`delete` pairs to prevent memory leaks
 
 ---
 
-## 📝 Licença
+## Team Contributions
 
-Este projeto foi desenvolvido como exercício educacional.
+### nkiampav
+- Core server implementation (socket management, `poll()` loop)
+- Client connection handling and lifecycle management
+- Non-blocking I/O implementation
+- Signal handling and graceful shutdown
+
+### jpanzo
+- HTTP request parsing (methods, headers, body)
+- HTTP response generation (status codes, headers)
+- Static file serving and MIME types
+- Error page handling
+
+### maalmeid
+- Configuration file parser
+- CGI script execution and environment setup
+- File upload handling
+- URL routing and redirections
 
 ---
 
-**Última atualização:** Janeiro 2026
+## Resources
 
+### Documentation & Standards
+- [RFC 2616 - HTTP/1.1](https://datatracker.ietf.org/doc/html/rfc2616) - Official HTTP/1.1 specification
+- [RFC 7230-7235](https://datatracker.ietf.org/doc/html/rfc7230) - Updated HTTP/1.1 standards
+- [NGINX Documentation](https://nginx.org/en/docs/) - Configuration file inspiration
+- [Beej's Guide to Network Programming](https://beej.us/guide/bgnet/) - Socket programming tutorial
+- [poll(2) man page](https://man7.org/linux/man-pages/man2/poll.2.html) - poll() system call documentation
+- [CGI 1.1 Specification](https://datatracker.ietf.org/doc/html/rfc3CGI) - Common Gateway Interface
+
+### Medium Articles
+- [webserv: Building a Non-Blocking Web Server in C++98 (A 42 project)](https://m4nnb3ll.medium.com/webserv-building-a-non-blocking-web-server-in-c-98-a-42-project-04c7365e4ec7) by MannBell - Detailed walkthrough of implementing non-blocking I/O with select/poll/epoll
+- [Building an HTTP Server From Scratch in C++](https://osasazamegbe.medium.com/showing-building-an-http-server-from-scratch-in-c-2da7c0db6cb7) by Osamudiamen Azamegbe - Comprehensive guide to HTTP server architecture and TCP socket programming
+- [I wrote a HTTP server from scratch in C++](https://medium.com/@aryandev512/i-wrote-a-http-server-from-scratch-in-c-0a97e8252371) by Aryandev - Practical implementation covering socket programming, HTTP protocol, and server-client model
+- [Building a multi-client chat server with select and epoll](https://mecha-mind.medium.com/a-non-threaded-chat-server-in-c-53dadab8e8f3) by Abhijit Mondal - Comparison of select() vs epoll() for handling multiple concurrent connections
+- [60B Over 10K: Measuring select() vs poll() vs epoll() for non-blocking TCP sockets](https://medium.com/@seantywork/60b-over-10k-measuring-select-vs-poll-vs-epoll-for-non-blocking-tcp-sockets-38d64f23319f) by Taehoon Yoon - Performance benchmarks comparing different I/O multiplexing approaches
+
+### Testing Tools
+- [Siege](https://github.com/JoeDog/siege) - HTTP load testing and benchmarking
+- [Apache Bench (ab)](https://httpd.apache.org/docs/2.4/programs/ab.html) - HTTP server benchmarking
+- [Postman](https://www.postman.com/) - API testing and request crafting
+
+### AI Usage
+
+AI tools (Claude, ChatGPT) were used strategically throughout this project to:
+
+1. **Code Generation**: 
+   - Initial boilerplate for class structures
+   - Helper functions for common tasks (string parsing, byte conversions)
+   - Template code for poll() loop structure
+
+2. **Debugging Assistance**:
+   - Identifying potential race conditions in non-blocking I/O
+   - Explaining obscure socket errors and errno values
+   - Suggesting fixes for memory leaks detected by Valgrind
+
+3. **Documentation**:
+   - Generating comprehensive code comments
+   - Creating this README structure
+   - Explaining complex networking concepts
+
+4. **Research**:
+   - Understanding differences between select(), poll(), epoll(), kqueue()
+   - HTTP header parsing edge cases
+   - CGI environment variable specifications
+
+**Important Note**: All AI-generated code was thoroughly reviewed, tested, and understood by the team before integration. We used AI as a learning accelerator, not as a replacement for understanding. During peer evaluation, we can explain every line of code and the reasoning behind our implementation choices.
+
+---
+
+## Acknowledgments
+
+Special thanks to:
+- The 42 Network for providing this challenging and educational project
+- NGINX developers for configuration file format inspiration
+- The open-source community for excellent networking documentation
+- Our peers for invaluable testing, feedback, and code review
+
+---
+
+## License
+
+This project is part of the 42 school curriculum and is intended for educational purposes only.
+
+---
+
+**Last Updated**: January 2026  
+**42 School Project**: webserv  
+**Grade**: [Pending Evaluation]
