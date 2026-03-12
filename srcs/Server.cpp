@@ -6,7 +6,7 @@
 /*   By: nkiampav <nkiampav@student.42.fr>          +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2026/01/08 19:54:24 by nkiampav          #+#    #+#             */
-/*   Updated: 2026/03/11 16:36:47 by nkiampav         ###   ########.fr       */
+/*   Updated: 2026/03/09 10:35:43 by nkiampav         ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
@@ -391,50 +391,12 @@ void Server::handle_client_read(Client& client, size_t client_index)
 		size_t config_index = client.get_server_config_index();
 		ServerConfig server_cfg = _config.get_server(config_index);
 		
-		// Verificar se o método é permitido para este URI
-		std::string method = request.get_method();
-		std::string uri = request.get_uri();
-		
-		// DEBUG: Verificar qual location está sendo selecionada
-		const LocationConfig* matched_loc = _config.find_location(uri, config_index);
-		if (matched_loc)
-		{
-			std::cout << "DEBUG: URI '" << uri << "' matched location '" << matched_loc->path << "'" << std::endl;
-			std::cout << "DEBUG: Allowed methods: ";
-			for (size_t i = 0; i < matched_loc->allowed_methods.size(); i++)
-			{
-				std::cout << matched_loc->allowed_methods[i] << " ";
-			}
-			std::cout << std::endl;
-		}
-		else
-		{
-			std::cout << "DEBUG: URI '" << uri << "' - NO LOCATION MATCHED" << std::endl;
-		}
-		
 		// Gerar resposta
 		Response response;
 		response.set_error_pages(server_cfg.error_pages);  // Configurar páginas de erro
 		response.set_root(server_cfg.root);                // Configurar root
 		response.set_index_files(server_cfg.index_files);  // Configurar arquivos index
-		
-		// Verificar se o método é permitido antes de processar
-		if (!_config.is_method_allowed(method, uri, config_index))
-		{
-			response.set_status(405);  // Method Not Allowed
-			response.set_header("Content-Type", "text/html");
-			std::string error_body = "<html><body><h1>405 Method Not Allowed</h1><p>The method " + method + " is not allowed for this resource.</p></body></html>";
-			response.set_body(error_body);
-			
-			// Adicionar Content-Length
-			std::ostringstream length_stream;
-			length_stream << error_body.length();
-			response.set_header("Content-Length", length_stream.str());
-		}
-		else
-		{
-			response.generate(request, server_cfg.root);
-		}
+		response.generate(request, server_cfg.root);
 			
 		// Obter resposta HTTP completa
 		std::string http_response = response.get_response();

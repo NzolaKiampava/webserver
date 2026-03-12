@@ -468,12 +468,22 @@ LocationConfig* Config::find_location(const std::string& uri, size_t server_inde
 		return NULL;
 	
 	LocationConfig* best_match = NULL;
-	LocationConfig* regex_match = NULL;
 	size_t best_match_length = 0;
 	
 	for (size_t i = 0; i < _servers[server_index].locations.size(); i++)
 	{
 		const std::string& loc_path = _servers[server_index].locations[i].path;
+		
+		// Verificar se URI começa com o path da location
+		if (uri.find(loc_path) == 0)
+		{
+			// Encontrar match mais específico (path mais longo)
+			if (loc_path.length() > best_match_length)
+			{
+				best_match = &_servers[server_index].locations[i];
+				best_match_length = loc_path.length();
+			}
+		}
 		
 		// Verificar regex patterns (começam com ~)
 		// Simplificado: apenas verifica extensão
@@ -490,26 +500,11 @@ LocationConfig* Config::find_location(const std::string& uri, size_t server_inde
 				if (uri.length() >= ext.length() &&
 				    uri.substr(uri.length() - ext.length()) == ext)
 				{
-					// Guardar regex match, mas não sobrescrever best_match ainda
-					regex_match = &_servers[server_index].locations[i];
+					best_match = &_servers[server_index].locations[i];
 				}
 			}
 		}
-		// Verificar se URI começa com o path da location (prefix match)
-		else if (uri.find(loc_path) == 0)
-		{
-			// Encontrar match mais específico (path mais longo)
-			if (loc_path.length() > best_match_length)
-			{
-				best_match = &_servers[server_index].locations[i];
-				best_match_length = loc_path.length();
-			}
-		}
 	}
-	
-	// Regex match tem prioridade sobre prefix match (comportamento similar ao nginx)
-	if (regex_match)
-		return regex_match;
 	
 	return best_match;
 }
@@ -525,7 +520,7 @@ bool Config::is_method_allowed(const std::string& method, const std::string& uri
 	const LocationConfig* location = find_location(uri, server_index);
 	
 	if (!location || location->allowed_methods.empty())
-		return false;  // Se não há métodos definidos, bloquear
+		return true;  // Se não há restrição, permitir
 	
 	for (size_t i = 0; i < location->allowed_methods.size(); i++)
 	{
