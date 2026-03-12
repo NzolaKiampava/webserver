@@ -1,4 +1,5 @@
 #include "Response.hpp"
+#include "CGI.hpp"
 #include "Utils.hpp"
 #include <fstream>
 #include <sstream>
@@ -8,7 +9,7 @@
 #include <dirent.h>
 
 // Construtor: Inicializa resposta com status 200 OK
-Response::Response() : _status_code(200), _status_message("OK")
+Response::Response() : _status_code(200), _status_message("OK"), _max_body_size(0)
 {
 	// Headers padrão
 	_headers["Server"] = "WebServer/1.0";
@@ -81,11 +82,130 @@ void Response::_handle_get(const Request& request, const std::string& root)
 	// Decodificar URI
 	uri = Utils::url_decode(uri);
 	
+	// Guardar query string antes de remover
+	std::string full_uri = uri;
+	
 	// Remover query string se existir
 	size_t query_pos = uri.find('?');
 	if (query_pos != std::string::npos)
 		uri = uri.substr(0, query_pos);
 	
+	// ===== DETECÇÃO DE CGI =====
+	// Verificar se é um script CGI (múltiplos sistemas suportados)
+	bool is_cgi = false;
+	std::string script_path;
+	std::string interpreter;
+	
+	// Extensões CGI suportadas: .py (Python), .php (PHP), .pl (Perl)
+	if (uri.length() > 3 && uri.substr(uri.length() - 3) == ".py")
+	{
+		is_cgi = true;
+		script_path = "." + uri;
+		#ifdef _WIN32
+			interpreter = "python";
+		#else
+			interpreter = "/usr/bin/python3";
+		#endif
+	}
+	else if (uri.length() > 4 && uri.substr(uri.length() - 4) == ".php")
+	{
+		is_cgi = true;
+		script_path = "." + uri;
+		#ifdef _WIN32
+			interpreter = "php-cgi";
+		#else
+			interpreter = "/usr/bin/php-cgi";
+		#endif
+	}
+	else if (uri.length() > 3 && uri.substr(uri.length() - 3) == ".pl")
+	{
+		is_cgi = true;
+		script_path = "." + uri;
+		#ifdef _WIN32
+			interpreter = "perl";
+		#else
+			interpreter = "/usr/bin/perl";
+		#endif
+	}
+	
+	// Se for CGI, executar script
+	if (is_cgi)
+	{
+		// Verificar se script existe
+		if (!Utils::file_exists(script_path))
+		{
+			set_status(404);
+			_serve_error_page(404);
+			return;
+		}
+		
+		try
+		{
+			// Criar objeto CGI com interpretador apropriado
+			CGI cgi(script_path, interpreter, request);
+			cgi.set_timeout(5);
+			
+			// Executar script e capturar saída
+			std::string cgi_output = cgi.execute();
+			
+			// Parse da saída CGI (separa headers do body)
+			size_t header_end = cgi_output.find("\r\n\r\n");
+			if (header_end == std::string::npos)
+				header_end = cgi_output.find("\n\n");
+			
+			if (header_end != std::string::npos)
+			{
+				// Extrair headers do CGI
+				std::string cgi_headers = cgi_output.substr(0, header_end);
+				std::string cgi_body = cgi_output.substr(header_end + 4);
+				
+				// Parse dos headers
+				std::istringstream header_stream(cgi_headers);
+				std::string line;
+				while (std::getline(header_stream, line))
+				{
+					if (line.empty() || line == "\r")
+						continue;
+					
+					size_t colon = line.find(':');
+					if (colon != std::string::npos)
+					{
+						std::string key = line.substr(0, colon);
+						std::string value = line.substr(colon + 1);
+						
+						// Trim spaces
+						while (!value.empty() && value[0] == ' ') value.erase(0, 1);
+						while (!value.empty() && (value[value.length()-1] == '\r' || value[value.length()-1] == '\n'))
+							value.erase(value.length()-1);
+						
+						set_header(key, value);
+					}
+				}
+				
+				// Body do CGI
+				_body = cgi_body;
+				set_status(200);
+			}
+			else
+			{
+				// Sem separação de headers/body, assumir que é tudo body
+				_body = cgi_output;
+				set_header("Content-Type", "text/html");
+				set_status(200);
+			}
+			
+			return;
+		}
+		catch (const std::exception& e)
+		{
+			std::cerr << "CGI execution error: " << e.what() << std::endl;
+			set_status(500);
+			_serve_error_page(500);
+			return;
+		}
+	}
+	
+	// ===== ARQUIVOS ESTÁTICOS =====
 	// Construir caminho completo do arquivo
 	std::string filepath = root + uri;
 	
@@ -97,20 +217,31 @@ void Response::_handle_get(const Request& request, const std::string& root)
 		return;
 	}
 	
-	// Se for diretório, tentar servir index.html ou listar conteúdo
+	// Se for diretório, tentar servir index file ou listar conteúdo
 	if (Utils::is_directory(filepath))
 	{
 		// Adicionar '/' no final se não tiver
 		if (filepath[filepath.length() - 1] != '/')
 			filepath += "/";
 		
-		std::string index_path = filepath + "index.html";
-		
-		if (Utils::file_exists(index_path))
+		// Tentar cada index file configurado
+		bool found = false;
+		if (!_index_files.empty())
 		{
-			_serve_file(index_path);
+			for (size_t i = 0; i < _index_files.size(); i++)
+			{
+				std::string index_path = filepath + _index_files[i];
+				if (Utils::file_exists(index_path))
+				{
+					_serve_file(index_path);
+					found = true;
+					break;
+				}
+			}
 		}
-		else
+		
+		// Se não encontrou nenhum index file, listar diretório
+		if (!found)
 		{
 			// Listar diretório
 			_serve_directory_listing(filepath, uri);
@@ -128,6 +259,128 @@ void Response::_handle_post(const Request& request, const std::string& root)
 {
     std::string uri = request.get_uri();
     std::string content_type = request.get_header("Content-Type");
+
+    // Decodificar URI
+    uri = Utils::url_decode(uri);
+    
+    // Remover query string se existir
+    size_t query_pos = uri.find('?');
+    if (query_pos != std::string::npos)
+        uri = uri.substr(0, query_pos);
+
+    // ===== DETECÇÃO DE CGI =====
+    // Verificar se é um script CGI (múltiplos sistemas suportados)
+    bool is_cgi = false;
+    std::string script_path;
+    std::string interpreter;
+    
+    // Extensões CGI suportadas: .py (Python), .php (PHP), .pl (Perl)
+    if (uri.length() > 3 && uri.substr(uri.length() - 3) == ".py")
+    {
+        is_cgi = true;
+        script_path = "." + uri;
+        #ifdef _WIN32
+            interpreter = "python";
+        #else
+            interpreter = "/usr/bin/python3";
+        #endif
+    }
+    else if (uri.length() > 4 && uri.substr(uri.length() - 4) == ".php")
+    {
+        is_cgi = true;
+        script_path = "." + uri;
+        #ifdef _WIN32
+            interpreter = "php-cgi";
+        #else
+            interpreter = "/usr/bin/php-cgi";
+        #endif
+    }
+    else if (uri.length() > 3 && uri.substr(uri.length() - 3) == ".pl")
+    {
+        is_cgi = true;
+        script_path = "." + uri;
+        #ifdef _WIN32
+            interpreter = "perl";
+        #else
+            interpreter = "/usr/bin/perl";
+        #endif
+    }
+    
+    // Se for CGI, executar script
+    if (is_cgi)
+    {
+        // Verificar se script existe
+        if (!Utils::file_exists(script_path))
+        {
+            set_status(404);
+            _serve_error_page(404);
+            return;
+        }
+        
+        try
+        {
+            // Criar objeto CGI com interpretador apropriado
+            CGI cgi(script_path, interpreter, request);
+            cgi.set_timeout(5);
+            
+            // Executar script e capturar saída
+            std::string cgi_output = cgi.execute();
+            
+            // Parse da saída CGI (separa headers do body)
+            size_t header_end = cgi_output.find("\r\n\r\n");
+            if (header_end == std::string::npos)
+                header_end = cgi_output.find("\n\n");
+            
+            if (header_end != std::string::npos)
+            {
+                // Extrair headers do CGI
+                std::string cgi_headers = cgi_output.substr(0, header_end);
+                std::string cgi_body = cgi_output.substr(header_end + 4);
+                
+                // Parse dos headers CGI
+                std::istringstream header_stream(cgi_headers);
+                std::string header_line;
+                
+                while (std::getline(header_stream, header_line))
+                {
+                    // Remover \r se existir
+                    if (!header_line.empty() && header_line[header_line.length() - 1] == '\r')
+                        header_line.erase(header_line.length() - 1);
+                    
+                    size_t colon_pos = header_line.find(':');
+                    if (colon_pos != std::string::npos)
+                    {
+                        std::string key = header_line.substr(0, colon_pos);
+                        std::string value = header_line.substr(colon_pos + 1);
+                        
+                        // Trim espaços
+                        value.erase(0, value.find_first_not_of(" \t"));
+                        value.erase(value.find_last_not_of(" \t") + 1);
+                        
+                        set_header(key, value);
+                    }
+                }
+                
+                // Body do CGI
+                _body = cgi_body;
+            }
+            else
+            {
+                // Se não há separação de headers, toda a saída é o body
+                // (modo compatibilidade)
+                _body = cgi_output;
+            }
+            
+            set_status(200);
+        }
+        catch (const std::exception& e)
+        {
+            std::cerr << "CGI execution error: " << e.what() << std::endl;
+            set_status(500);
+            _serve_error_page(500);
+        }
+        return;
+    }
 
     // 1. Verificar se é um upload de ficheiro (Multipart)
     if (content_type.find("multipart/form-data") != std::string::npos)
@@ -161,10 +414,11 @@ void Response::_handle_post(const Request& request, const std::string& root)
         return;
     }
 
-    // Lógica para POSTs normais (se não for ficheiro)
-    // Aqui podes manter o que tinhas, mas garante que não tentas abrir pastas
-    set_status(405); // Método não permitido para este tipo de POST
-    _serve_error_page(405);
+    // Lógica para POSTs normais (se não for CGI nem multipart)
+    // Aceitar POST e retornar sucesso
+    set_status(200);
+    set_header("Content-Type", "text/html");
+    _body = "<html><body><h1>POST Recebido</h1><p>Dados recebidos com sucesso.</p></body></html>";
 }
 
 // Handler para requisições DELETE
@@ -312,9 +566,25 @@ std::string Response::_generate_directory_html(const std::string& dirpath, const
 // Serve página de erro personalizada
 void Response::_serve_error_page(int code)
 {
-	std::string error_page_path = "www/error_pages/" + 
-								  static_cast<std::ostringstream&>(std::ostringstream() << code).str() + 
-								  ".html";
+	std::string error_page_path;
+	
+	// 1. Verificar se há uma página de erro customizada na configuração
+	if (_error_pages.find(code) != _error_pages.end())
+	{
+		error_page_path = _error_pages[code];
+		// Se o caminho começa com /, é relativo ao root
+		if (error_page_path[0] == '/' && !_root.empty())
+		{
+			error_page_path = _root + error_page_path;
+		}
+	}
+	else
+	{
+		// 2. Fallback: tentar caminho padrão
+		error_page_path = "www/error_pages/" + 
+						  static_cast<std::ostringstream&>(std::ostringstream() << code).str() + 
+						  ".html";
+	}
 	
 	// Tentar carregar página de erro personalizada
 	if (Utils::file_exists(error_page_path))
@@ -324,7 +594,7 @@ void Response::_serve_error_page(int code)
 	}
 	else
 	{
-		// Página de erro padrão
+		// Página de erro padrão (fallback)
 		std::ostringstream html;
 		html << "<!DOCTYPE html>\n";
 		html << "<html>\n<head>\n";
@@ -362,6 +632,24 @@ void Response::set_header(const std::string& key, const std::string& value)
 void Response::set_body(const std::string& body)
 {
 	_body = body;
+}
+
+// Define as páginas de erro customizadas
+void Response::set_error_pages(const std::map<int, std::string>& error_pages)
+{
+	_error_pages = error_pages;
+}
+
+// Define o diretório root
+void Response::set_root(const std::string& root)
+{
+	_root = root;
+}
+
+// Define os arquivos index
+void Response::set_index_files(const std::vector<std::string>& index_files)
+{
+	_index_files = index_files;
 }
 
 // Monta a resposta HTTP completa formatada

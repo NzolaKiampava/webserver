@@ -1,0 +1,6 @@
+post /cgi-bin/form_handler.py HTTP/1.1
+Host: localhost:8080
+Content-Type: application/x-www-form-urlencoded
+Content-Length: 27
+
+nome=SeuNome&email=seu@email.com

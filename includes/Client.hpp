@@ -6,7 +6,7 @@
 /*   By: nkiampav <nkiampav@student.42.fr>          +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2026/01/08 19:57:13 by nkiampav          #+#    #+#             */
-/*   Updated: 2026/02/14 15:07:32 by nkiampav         ###   ########.fr       */
+/*   Updated: 2026/03/02 01:02:53 by nkiampav         ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
@@ -32,6 +32,9 @@ private:
     
     // Controle de tempo para Timeout
     time_t      _last_activity;
+    
+    // Índice da configuração do servidor (qual virtual host)
+    size_t      _server_config_index;
 
     // Objetos de processamento (Membro 2)
     Request     _request;
@@ -40,7 +43,7 @@ private:
     void        _check_request_complete();
 
 public:
-    Client(int socket, const std::string& ip);
+    Client(int socket, const std::string& ip, size_t config_index = 0);
     ~Client();
 
     // Getters
@@ -48,6 +51,7 @@ public:
     std::string     get_ip() const;
     std::string&    get_buffer();
     bool            is_request_complete() const;
+    size_t          get_server_config_index() const;
     bool            has_response_to_send() const;
     bool            response_sent() const;
     time_t          get_last_activity() const;

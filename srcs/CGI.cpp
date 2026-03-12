@@ -319,8 +319,28 @@ std::string CGI::execute_with_body(const std::string& body)
 		// Enviar body para stdin do CGI
 		if (!body.empty())
 		{
-			ssize_t written = write(pipe_in[1], body.c_str(), body.length());
-			(void)written;  // Suprimir warning
+			size_t total_written = 0;
+			size_t body_length = body.length();
+			
+			while (total_written < body_length)
+			{
+				ssize_t written = write(pipe_in[1], body.c_str() + total_written, body_length - total_written);
+				
+				if (written > 0)
+				{
+					total_written += written;
+				}
+				else if (written == 0)
+				{
+					// write() retornou 0 - não deveria acontecer
+					break;
+				}
+				else // written < 0
+				{
+					// Erro ao escrever - pipe pode ter sido fechado
+					break;
+				}
+			}
 		}
 		close(pipe_in[1]);
 		

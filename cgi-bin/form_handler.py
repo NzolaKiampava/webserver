@@ -45,7 +45,7 @@ print("    </style>")
 print("</head>")
 print("<body>")
 
-print("    <h1>📝 Form Handler (CGI)</h1>")
+print("    <h1> Form Handler (CGI)</h1>")
 
 # Processar dados
 request_method = os.environ.get('REQUEST_METHOD', '')
@@ -55,7 +55,7 @@ if request_method == 'GET' and query_string:
     params = parse_query_string(query_string)
     
     print("    <div class='result'>")
-    print("        <h2>✅ Form Submitted (GET)</h2>")
+    print("        <h2> Form Submitted (GET)</h2>")
     print(f"        <p><strong>Time:</strong> {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</p>")
     print("        <h3>Parameters Received:</h3>")
     
@@ -71,7 +71,7 @@ elif request_method == 'POST':
         params = parse_query_string(post_data)
         
         print("    <div class='result'>")
-        print("        <h2>✅ Form Submitted (POST)</h2>")
+        print("        <h2> Form Submitted (POST)</h2>")
         print(f"        <p><strong>Time:</strong> {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</p>")
         print("        <h3>Parameters Received:</h3>")
         

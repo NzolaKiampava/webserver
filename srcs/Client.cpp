@@ -10,13 +10,14 @@
 #define BUFFER_SIZE 4096
 
 // Construtor: Inicializa cliente com socket e IP
-Client::Client(int socket, const std::string& ip) 
+Client::Client(int socket, const std::string& ip, size_t config_index) 
 	: _socket(socket), 
 	_ip_address(ip),
 	_request_complete(false),
 	_response_ready(false),
 	_response_sent(false),
-	_bytes_sent(0)
+	_bytes_sent(0),
+	_server_config_index(config_index)
 
 {
     update_activity();
@@ -113,7 +114,14 @@ void Client::send_response()
             _response_sent = true;
         }
     }
-    else if (bytes_sent == -1)
+    else if (bytes_sent == 0)
+    {
+        // send() retornou 0 - socket pode estar em estado estranho
+        // Tratar como erro e remover cliente
+        std::cerr << "send() returned 0 for " << _ip_address << std::endl;
+        throw std::runtime_error("send() returned 0");
+    }
+    else // bytes_sent < 0 (erro: -1)
     {
         // Erro no send() - qualquer erro deve remover o cliente
         // Em non-blocking com poll(), se há POLLOUT, send() não deve falhar
@@ -132,6 +140,12 @@ int Client::get_socket() const
 std::string Client::get_ip() const
 {
     return _ip_address;
+}
+
+// Getter: Retorna o índice da configuração do servidor
+size_t Client::get_server_config_index() const
+{
+    return _server_config_index;
 }
 
 // Getter: Retorna referência para objeto Request
@@ -265,9 +279,8 @@ void Client::reset_for_next_request() {
     _response_sent = false;
     _bytes_sent = 0;
     
-    // É importante ter um método clear() nas suas classes Request e Response
-    _request = Request(); 
-    _response = Response();
+    // Não resetar _request e _response porque eles serão recriados quando necessário
+    // e resetar pode causar problemas com destructors/constructors
     
     update_activity();
 }

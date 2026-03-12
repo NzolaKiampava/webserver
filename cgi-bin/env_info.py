@@ -37,11 +37,11 @@ print("</head>")
 print("<body>")
 print("    <div class='container'>")
 
-print("        <h1>🐍 CGI Environment Information</h1>")
+print("        <h1> CGI Environment Information</h1>")
 print(f"        <p class='highlight'><strong>Generated at:</strong> {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</p>")
 
 # Request Info
-print("        <h2>📝 Request Information</h2>")
+print("        <h2> Request Information</h2>")
 print("        <table>")
 print("            <tr><th>Property</th><th>Value</th></tr>")
 print(f"            <tr><td><strong>Method</strong></td><td><code>{os.environ.get('REQUEST_METHOD', 'N/A')}</code></td></tr>")
@@ -52,7 +52,7 @@ print(f"            <tr><td><strong>Content Length</strong></td><td><code>{os.en
 print("        </table>")
 
 # Server Info
-print("        <h2>🖥️ Server Information</h2>")
+print("        <h2> Server Information</h2>")
 print("        <table>")
 print("            <tr><th>Property</th><th>Value</th></tr>")
 print(f"            <tr><td><strong>Server Name</strong></td><td><code>{os.environ.get('SERVER_NAME', 'N/A')}</code></td></tr>")
@@ -63,7 +63,7 @@ print(f"            <tr><td><strong>Gateway Interface</strong></td><td><code>{os
 print("        </table>")
 
 # Client Info
-print("        <h2>👤 Client Information</h2>")
+print("        <h2> Client Information</h2>")
 print("        <table>")
 print("            <tr><th>Property</th><th>Value</th></tr>")
 print(f"            <tr><td><strong>Remote Address</strong></td><td><code>{os.environ.get('REMOTE_ADDR', 'N/A')}</code></td></tr>")
@@ -73,7 +73,7 @@ print(f"            <tr><td><strong>Accept</strong></td><td><code>{os.environ.ge
 print("        </table>")
 
 # All Environment Variables
-print("        <h2>🔧 All Environment Variables</h2>")
+print("        <h2> All Environment Variables</h2>")
 print("        <table>")
 print("            <tr><th>Variable</th><th>Value</th></tr>")
 
@@ -88,11 +88,11 @@ if request_method == 'POST':
     content_length = int(os.environ.get('CONTENT_LENGTH', 0))
     if content_length > 0:
         post_data = sys.stdin.read(content_length)
-        print("        <h2>📨 POST Data</h2>")
+        print("        <h2> POST Data</h2>")
         print("        <pre>" + post_data + "</pre>")
 
 # Python Info
-print("        <h2>🐍 Python Runtime</h2>")
+print("        <h2> Python Runtime</h2>")
 print("        <table>")
 print("            <tr><th>Property</th><th>Value</th></tr>")
 print(f"            <tr><td><strong>Version</strong></td><td><code>{sys.version}</code></td></tr>")

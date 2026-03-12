@@ -6,7 +6,7 @@
 /*   By: nkiampav <nkiampav@student.42.fr>          +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2026/01/08 19:54:24 by nkiampav          #+#    #+#             */
-/*   Updated: 2026/03/01 23:02:44 by nkiampav         ###   ########.fr       */
+/*   Updated: 2026/03/11 16:36:47 by nkiampav         ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
@@ -41,16 +41,14 @@ void signal_handler(int signum)
 // Construtor: Inicializa o servidor com arquivo de configuração
 // - Carrega as configurações do arquivo
 // - Define porta, host e outras propriedades
-Server::Server(const std::string& configFile) : _socket(-1), _port(8080), _host("localhost"), _config(configFile)
+Server::Server(const std::string& configFile) : _config(configFile)
 {
-	_port = _config.get_port();
-	_host = _config.get_host();
-
 	// Configurar signals handlers para shutdowns gracioso
 	signal(SIGINT, signal_handler); // CTRL+C
 	signal(SIGTERM, signal_handler); // KILL
 	signal(SIGPIPE, SIG_IGN); // Ignorar SIGPIPE (cliente desconecta durante write)
-	std::cout << "Server initialized with port: " << _port << " and host: " << _host << std::endl;
+	
+	std::cout << "Server initialized with " << _config.get_server_count() << " server configuration(s)" << std::endl;
 }
 
 // Destrutor: Limpa recursos e fecha o servidor
@@ -59,16 +57,16 @@ Server::~Server()
 	close_server();
 }
 
-// Getter: Retorna o socket do servidor
-int Server::get_socket() const
+// Getter: Retorna os sockets dos servidores
+const std::vector<int>& Server::get_sockets() const
 {
-	return _socket;
+	return _server_sockets;
 }
 
-// Getter: Retorna a porta em que o servidor está escutando
-int Server::get_port() const
+// Getter: Retorna o número de servidores configurados
+size_t Server::get_server_count() const
 {
-	return _port;
+	return _config.get_server_count();
 }
 
 // COnfigura um socket para modo non-blocking
@@ -86,57 +84,83 @@ void Server::_set_nonblocking(int socket)
 		throw std::runtime_error("Error: fcntl F_SETFL O_NONBLOCK failed");
 }
 
-// Cria o socket do servidor e faz bind/listen
-// - cria socket ipv4 tcp
-// - configura opcoes do socke (SO_RESUSEADDR)
-// - Defina modo non-blocking
-// - Faz bind ao endereco e porta
-// - coloca socket em modo listening
-void Server::_setup_socket()
+// Cria e faz bind de um socket individual para um host:port
+// Retorna o descritor do socket ou lança exceção em caso de erro
+int Server::_create_and_bind_socket(const std::string& host, int port)
 {
 	// Criar socket (IPv4, TCP)
-	_socket = socket(AF_INET, SOCK_STREAM, 0);
-	if (_socket < 0)
+	int sock = socket(AF_INET, SOCK_STREAM, 0);
+	if (sock < 0)
 		throw std::runtime_error("Error: Could not create socket");
 	
 	// Permitir reutilização de porta/endereço
 	// util quando reinciamos o servidor rapidamente
 	int reuse = 1;
-	if (setsockopt(_socket, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(reuse)) < 0)
+	if (setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(reuse)) < 0)
 	{
-		close(_socket);
+		close(sock);
 		throw std::runtime_error("Error: Could not set socket options");
 	}
 
 	// configurar socket para non-blocking
-	_set_nonblocking(_socket);
+	_set_nonblocking(sock);
 	
 	// Configurar estrutura de endereço do servidor
 	struct sockaddr_in server_addr;
 	std::memset(&server_addr, 0, sizeof(server_addr));
 	server_addr.sin_family = AF_INET; // Ipv4
-	server_addr.sin_port = htons(_port);  // porta em network byte order
+	server_addr.sin_port = htons(port);  // porta em network byte order
 	
-	if (inet_aton(_host.c_str(), &server_addr.sin_addr) == 0)
+	if (inet_aton(host.c_str(), &server_addr.sin_addr) == 0)
 		server_addr.sin_addr.s_addr = htonl(INADDR_ANY);
 
 	// Bind do socket ao endereço e porta
-	if (bind(_socket, (struct sockaddr*)&server_addr, sizeof(server_addr)) < 0)
+	if (bind(sock, (struct sockaddr*)&server_addr, sizeof(server_addr)) < 0)
 	{
 		std::ostringstream oss;
-		oss << "Error: Could not bind socket to port " << _port;
-		close(_socket);
+		oss << "Error: Could not bind socket to " << host << ":" << port;
+		close(sock);
 		throw std::runtime_error(oss.str());
 	}
 	
 	// Começar a escutar por conexões
-	if (listen(_socket, SOMAXCONN) < 0)
+	if (listen(sock, SOMAXCONN) < 0)
 	{	
-		close(_socket);
+		close(sock);
 		throw std::runtime_error("Error: Could not listen on socket");
 	}
 	
-	std::cout << "Server listening on " << _host << ":" << _port << std::endl;
+	std::cout << "Server listening on " << host << ":" << port << std::endl;
+	return sock;
+}
+
+// Cria sockets para todos os servidores configurados
+// - Itera sobre todas as configurações de servidor
+// - Cria um socket listening para cada porta
+// - Mapeia cada socket ao índice de sua configuração
+void Server::_setup_sockets()
+{
+	std::vector<ServerConfig> servers = _config.get_servers();
+	
+	for (size_t i = 0; i < servers.size(); ++i)
+	{
+		try 
+		{
+			int sock = _create_and_bind_socket(servers[i].host, servers[i].port);
+			_server_sockets.push_back(sock);
+			_socket_to_config[sock] = i;
+		}
+		catch (const std::exception& e)
+		{
+			std::cerr << "Failed to setup server " << i << ": " << e.what() << std::endl;
+			// Fechar sockets já criados
+			for (size_t j = 0; j < _server_sockets.size(); ++j)
+				close(_server_sockets[j]);
+			_server_sockets.clear();
+			_socket_to_config.clear();
+			throw;
+		}
+	}
 }
 
 // Inicia o loop principal do servidor com poll
@@ -149,8 +173,8 @@ void Server::run()
 {
 	try
 	{
-		// Setup do socket (bind, listen)
-		_setup_socket();
+		// Setup dos sockets (bind, listen) para todos os servidores
+		_setup_sockets();
 
 		_running = true;
 		
@@ -161,16 +185,21 @@ void Server::run()
 		while (_running && !g_shutdown)
 		{
 			// Preparar array de pollfd
-            // pollfd[0] será sempre o socket do servidor
-            // pollfd[1..n] serão os sockets dos clientes
+            // pollfd[0..N-1] serão os sockets dos servidores (listening)
+            // pollfd[N..M] serão os sockets dos clientes
             std::vector<struct pollfd> poll_fds;
             
-            // Adicionar socket do servidor ao poll
-            struct pollfd server_pollfd;
-            server_pollfd.fd = _socket;           // Socket a monitorar
-            server_pollfd.events = POLLIN;        // Interessado em eventos de leitura
-            server_pollfd.revents = 0;            // Limpar eventos retornados
-            poll_fds.push_back(server_pollfd);
+            // Adicionar todos os sockets dos servidores ao poll
+            for (size_t i = 0; i < _server_sockets.size(); ++i)
+            {
+            	struct pollfd server_pollfd;
+            	server_pollfd.fd = _server_sockets[i];
+            	server_pollfd.events = POLLIN;
+            	server_pollfd.revents = 0;
+            	poll_fds.push_back(server_pollfd);
+            }
+            
+            size_t num_server_sockets = _server_sockets.size();
             
             // Adicionar todos os sockets de clientes ao poll
             for (size_t i = 0; i < _clients.size(); ++i)
@@ -214,18 +243,34 @@ void Server::run()
             
             // Há atividade em um ou mais sockets
             
-            // Verificar se há nova conexão no socket principal (índice 0)
-            if (poll_fds[0].revents & POLLIN)
+            // Verificar se há nova conexão em algum dos sockets principais
+            // Aceitar TODAS as conexões pendentes (não apenas uma)
+            for (size_t i = 0; i < num_server_sockets; ++i)
             {
-                accept_connection();
+            	if (poll_fds[i].revents & POLLIN)
+            	{
+            		int server_sock = _server_sockets[i];
+            		size_t config_index = _socket_to_config[server_sock];
+            		
+            		// Loop para aceitar múltiplas conexões pendentes
+            		// O socket é non-blocking, então accept() retorna -1 quando não há mais conexões
+            		while (true)
+            		{
+            			size_t old_clients_size = _clients.size();
+            			accept_connection(server_sock, config_index);
+            			// Se não aceitou nova conexão, sair do loop
+            			if (_clients.size() == old_clients_size)
+            				break;
+            		}
+            	}
             }
             
-            // Verificar atividade nos sockets dos clientes (índices 1..n)
+            // Verificar atividade nos sockets dos clientes
             // Iteramos de trás para frente para poder remover clientes com segurança
-            for (int i = poll_fds.size() - 1; i > 0; --i)
+            for (int i = poll_fds.size() - 1; i >= static_cast<int>(num_server_sockets); --i)
             {
-                // Índice do cliente é (i - 1) porque pollfd[0] é o servidor
-                size_t client_index = i - 1;
+                // Índice do cliente é (i - num_server_sockets)
+                size_t client_index = i - num_server_sockets;
                 
                 // POLLNVAL significa socket inválido - remover imediatamente
                 if (poll_fds[i].revents & POLLNVAL)
@@ -272,12 +317,12 @@ void Server::run()
 // - configura socket do cliente em non-blocking
 // - Cria novo objeto Client
 // - Adiciona à lista de clientes
-void Server::accept_connection()
+void Server::accept_connection(int server_socket, size_t config_index)
 {
 	struct sockaddr_in client_addr;
 	socklen_t client_addr_len = sizeof(client_addr);
 	
-	int client_socket = accept(_socket, (struct sockaddr*)&client_addr, &client_addr_len);
+	int client_socket = accept(server_socket, (struct sockaddr*)&client_addr, &client_addr_len);
 	
 	if (client_socket < 0)
 	{
@@ -303,11 +348,15 @@ void Server::accept_connection()
 	// Obter IP do cliente em formato string
 	std::string client_ip = inet_ntoa(client_addr.sin_addr);
 	
+	// Obter informação da configuração do servidor
+	ServerConfig server_cfg = _config.get_server(config_index);
+	
 	std::cout << "New connection accepted from " << client_ip << ":" << ntohs(client_addr.sin_port)
+			  << " on server " << server_cfg.host << ":" << server_cfg.port
 			  << " (socket " << client_socket << ")" << std::endl;
 	
-	// Criar novo cliente e adicionar à lista
-	_clients.push_back(Client(client_socket, client_ip));
+	// Criar novo cliente e adicionar à lista (passando o índice de configuração)
+	_clients.push_back(Client(client_socket, client_ip, config_index));
 }
 
 // Processa requisição de um cliente
@@ -338,43 +387,80 @@ void Server::handle_client_read(Client& client, size_t client_index)
 			std::cout << "Request: " << request.get_method() << " " 
 			          << request.get_uri() << " " << request.get_version() << std::endl;
 			
-			// Gerar resposta
-			Response response;
-			response.generate(request, "./www");
-			
-			// Obter resposta HTTP completa
-			std::string http_response = response.get_response();
-			
-			// Definir buffer de resposta no cliente
-			client.set_response_buffer(http_response);
-			
-			std::cout << "Response generated: " << response.get_status_code() 
-			          << " " << response.get_status_message(response.get_status_code()) << std::endl;
-			
-			// Tentar enviar a resposta imediatamente
-			client.send_response();
-			
-			// Se resposta foi completamente enviada, verificar keep-alive
-			if (client.response_sent())
+		// Obter configuração do servidor para este cliente
+		size_t config_index = client.get_server_config_index();
+		ServerConfig server_cfg = _config.get_server(config_index);
+		
+		// Verificar se o método é permitido para este URI
+		std::string method = request.get_method();
+		std::string uri = request.get_uri();
+		
+		// DEBUG: Verificar qual location está sendo selecionada
+		const LocationConfig* matched_loc = _config.find_location(uri, config_index);
+		if (matched_loc)
+		{
+			std::cout << "DEBUG: URI '" << uri << "' matched location '" << matched_loc->path << "'" << std::endl;
+			std::cout << "DEBUG: Allowed methods: ";
+			for (size_t i = 0; i < matched_loc->allowed_methods.size(); i++)
 			{
-				std::cout << "Response fully sent to " << client.get_ip() << std::endl;
-				
-				// Verificar se o cliente quer manter a conexão aberta
-				std::string conn_header = client.get_request().get_header("Connection");
-				
-				if (conn_header == "keep-alive") {
-					std::cout << "Keeping connection alive for " << client.get_ip() << std::endl;
-					client.reset_for_next_request();
-				} else {
-					std::cout << "Closing connection (Connection: close) for " << client.get_ip() << std::endl;
-					_remove_client(client_index);
-				}
+				std::cout << matched_loc->allowed_methods[i] << " ";
 			}
+			std::cout << std::endl;
+		}
+		else
+		{
+			std::cout << "DEBUG: URI '" << uri << "' - NO LOCATION MATCHED" << std::endl;
+		}
+		
+		// Gerar resposta
+		Response response;
+		response.set_error_pages(server_cfg.error_pages);  // Configurar páginas de erro
+		response.set_root(server_cfg.root);                // Configurar root
+		response.set_index_files(server_cfg.index_files);  // Configurar arquivos index
+		
+		// Verificar se o método é permitido antes de processar
+		if (!_config.is_method_allowed(method, uri, config_index))
+		{
+			response.set_status(405);  // Method Not Allowed
+			response.set_header("Content-Type", "text/html");
+			std::string error_body = "<html><body><h1>405 Method Not Allowed</h1><p>The method " + method + " is not allowed for this resource.</p></body></html>";
+			response.set_body(error_body);
+			
+			// Adicionar Content-Length
+			std::ostringstream length_stream;
+			length_stream << error_body.length();
+			response.set_header("Content-Length", length_stream.str());
+		}
+		else
+		{
+			response.generate(request, server_cfg.root);
+		}
+			
+		// Obter resposta HTTP completa
+		std::string http_response = response.get_response();
+		
+		// Definir buffer de resposta no cliente
+		client.set_response_buffer(http_response);
+		
+		std::cout << "Response generated: " << response.get_status_code() 
+		          << " " << response.get_status_message(response.get_status_code()) << std::endl;
+		
+		// A resposta será enviada quando poll() indicar POLLOUT
+		// (próxima iteração do loop, pois has_response_to_send() retornará true)
 		}
 	}
 	catch (const std::exception& e)
 	{
-		std::cerr << "Error handling client: " << e.what() << std::endl;
+		std::string error_msg = e.what();
+		// Se o cliente apenas fechou a conexão, não é um erro
+		if (error_msg == "Client disconnected")
+		{
+			// Log informativo apenas, sem "Error"
+		}
+		else
+		{
+			std::cerr << "Error handling client: " << e.what() << std::endl;
+		}
 		_remove_client(client_index);
 	}
 }
@@ -388,11 +474,14 @@ void Server::handle_client_write(Client& client, size_t client_index) {
         client.send_response();
         
         if (client.response_sent()) {
+            std::cout << "Response fully sent to " << client.get_ip() << std::endl;
+            
             // Verifica se o cliente quer manter a conexão aberta
             // E se o seu servidor também suporta (ex: limitando a conexões HTTP/1.1)
             std::string conn_header = client.get_request().get_header("Connection");
             
             if (conn_header == "keep-alive") {
+                std::cout << "Keeping connection alive for " << client.get_ip() << std::endl;
                 client.reset_for_next_request();
             } else {
                 std::cout << "Closing connection (Connection: close) for " << client.get_ip() << std::endl;
@@ -456,12 +545,16 @@ void Server::close_server()
 	}
 	_clients.clear();
 	
-	// Fechar o socket principal do servidor
-	if (_socket >= 0)
+	// Fechar todos os sockets dos servidores
+	for (size_t i = 0; i < _server_sockets.size(); ++i)
 	{
-		close(_socket);
-		_socket = -1;
+		if (_server_sockets[i] >= 0)
+		{
+			close(_server_sockets[i]);
+		}
 	}
+	_server_sockets.clear();
+	_socket_to_config.clear();
 	
 	_running = false;
 	std::cout << "Server closed successfully" << std::endl;

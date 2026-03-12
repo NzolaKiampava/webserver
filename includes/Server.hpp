@@ -6,7 +6,7 @@
 /*   By: nkiampav <nkiampav@student.42.fr>          +#+  +:+       +#+        */
 /*                                                +#+#+#+#+#+   +#+           */
 /*   Created: 2026/01/08 19:54:53 by nkiampav          #+#    #+#             */
-/*   Updated: 2026/01/24 11:35:19 by nkiampav         ###   ########.fr       */
+/*   Updated: 2026/03/02 01:02:53 by nkiampav         ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
@@ -28,18 +28,17 @@
 class Server
 {
 	private:
-		int _socket;
-		int _port;
-		std::string _host;
+		std::vector<int> _server_sockets;  // Múltiplos sockets (um por porta)
+		std::map<int, size_t> _socket_to_config;  // Mapeia socket -> índice do ServerConfig
 		std::vector<Client> _clients;
 		Config _config;
 		bool _running;
 		
-		void _setup_socket();
+		void _setup_sockets();
 		void _set_nonblocking(int socket);
+		int _create_and_bind_socket(const std::string& host, int port);
 
-
-		void accept_connection();
+		void accept_connection(int server_socket, size_t config_index);
 
 		void handle_client_read(Client& client, size_t client_index);
 		void handle_client_write(Client& client, size_t client_index);
@@ -58,8 +57,8 @@ class Server
 		void run();
 		void close_server();
 		
-		int get_socket() const;
-		int get_port() const;
+		const std::vector<int>& get_sockets() const;
+		size_t get_server_count() const;
 };
 
 #endif

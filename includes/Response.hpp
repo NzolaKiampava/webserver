@@ -27,6 +27,9 @@ class Response
 		std::map<std::string, std::string> _headers;
 		std::string _body;
 		size_t _max_body_size;
+		std::map<int, std::string> _error_pages;  // Páginas de erro customizadas
+		std::string _root;  // Root directory para resolver caminhos
+		std::vector<std::string> _index_files;  // Arquivos index (index.html, index.php, etc.)
 		
 		// Métodos privados auxiliares
 		void _handle_get(const Request& request, const std::string& root);
@@ -52,6 +55,9 @@ class Response
 		void set_header(const std::string& key, const std::string& value);
 		void set_body(const std::string& body);
 		void set_max_body_size(size_t size);
+		void set_error_pages(const std::map<int, std::string>& error_pages);
+		void set_root(const std::string& root);
+		void set_index_files(const std::vector<std::string>& index_files);
 		
 		std::string get_response() const;
 		std::string get_status_message(int code) const;

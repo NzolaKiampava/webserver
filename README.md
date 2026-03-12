@@ -1,6 +1,6 @@
 # Webserv
 
-*This project has been created as part of the 42 curriculum by [nkiampav](https://github.com/nkiampav), [maalmeid](https://github.com/maalmeid), and [jpanzo](https://github.com/jpanzo).*
+*This project has been created as part of the 42 curriculum by [nkiampav](https://github.com/NzolaKiampava), [maalmeid](https://github.com/maalmeid), and [jpanzo](https://github.com/jpanzo).*
 
 ## Table of Contents
 

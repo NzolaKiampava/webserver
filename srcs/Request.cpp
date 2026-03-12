@@ -40,8 +40,8 @@ void Request::parse(const std::string& raw_request)
 		std::istringstream line_stream(line);
 		line_stream >> _method >> _uri >> _version;
 		
-		// Normalizar método para uppercase
-		std::transform(_method.begin(), _method.end(), _method.begin(), ::toupper);
+		// Métodos HTTP são case-sensitive (RFC 9110)
+		// Não converter - aceitar apenas maiúsculas (GET, POST, etc.)
 	}
 	
 	// 2. Parse dos headers
